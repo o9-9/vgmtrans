@@ -208,3 +208,5 @@ compile_commands.json
 # Python environment
 .venv/
 __pycache__/
+
+junk/
