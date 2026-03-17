@@ -195,18 +195,24 @@ bool SequencePlayer::loadCollection(const VGMColl *coll, bool startPlaying) {
   auto rawSF2 = sf2->saveToMem();
   delete sf2;
   /* Deleted by MemFile::mem_close */
-  auto sf2_data_blob = new MemFile::DataBlob{0, std::move(rawSF2)};
+  auto sf2_data_blob = std::make_unique<MemFile::DataBlob>(MemFile::DataBlob{0, std::move(rawSF2)});
 
   /* Init soundfont */
   HSOUNDFONT sf2_handle =
-      BASS_MIDI_FontInitUser(&memory_file_callbacks, sf2_data_blob, BASS_MIDI_FONT_XGDRUMS);
+      BASS_MIDI_FontInitUser(&memory_file_callbacks, sf2_data_blob.get(), BASS_MIDI_FONT_XGDRUMS);
   if (BASS_ErrorGetCode() != BASS_OK) {
     L_ERROR("Could not load soundfont. Maybe the system is running out of "
                                   "memory or the sountfont was too large?");
     return false;
   }
+  sf2_data_blob.release();
 
-  MidiFile *midi = seq->convertToMidi(coll);
+  auto midi = std::unique_ptr<MidiFile>(seq->convertToMidi(coll));
+  if (!midi) {
+    BASS_MIDI_FontFree(sf2_handle);
+    L_ERROR("Failed to convert sequence to MIDI");
+    return false;
+  }
   std::vector<uint8_t> raw_midi;
   midi->writeMidiToBuffer(raw_midi);
   /* Set up the MIDI stream */
@@ -215,7 +221,7 @@ bool SequencePlayer::loadCollection(const VGMColl *coll, bool startPlaying) {
   if (BASS_ErrorGetCode() != BASS_OK) {
     BASS_MIDI_FontFree(sf2_handle);
 
-    L_ERROR("Failed reading MIDI data");
+    L_ERROR("Failed to read MIDI data");
     return false;
   }
 
